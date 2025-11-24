@@ -1,195 +1,201 @@
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import { GraduationCap, Mail, Lock, User, UserCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { useToast } from '@/components/ui/use-toast';
+import { motion } from "framer-motion";
+import { GraduationCap, Mail, Lock, User, UserCircle, Loader2 } from "lucide-react";
+import { Button } from "./ui/button"; // Usamos ./ para evitar errores de ruta
+import { useToast } from "./ui/use-toast";
+
+// --- IMPORTACIONES DE FIREBASE (NUEVO) ---
+import { auth, db } from "../firebase"; 
+import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
+// ----------------------------------------
 
 function Register({ onRegister, onSwitchToLogin }) {
+  const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
+  
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     password: '',
-    confirmPassword: '',
-    role: 'student'
+    role: 'student' // Por defecto estudiante
   });
-  const { toast } = useToast();
 
-  const handleSubmit = (e) => {
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (!formData.name || !formData.email || !formData.password || !formData.confirmPassword) {
-      toast({
-        title: "Error",
-        description: "Please fill in all fields.",
-        variant: "destructive",
+    setIsLoading(true);
+
+    try {
+      // 1. CREAR USUARIO EN FIREBASE AUTHENTICATION (Login)
+      const userCredential = await createUserWithEmailAndPassword(
+        auth, 
+        formData.email, 
+        formData.password
+      );
+      const user = userCredential.user;
+
+      // 2. ACTUALIZAR EL NOMBRE DE PERFIL
+      await updateProfile(user, {
+        displayName: formData.name
       });
-      return;
-    }
 
-    if (formData.password !== formData.confirmPassword) {
-      toast({
-        title: "Error",
-        description: "Passwords do not match.",
-        variant: "destructive",
+      // 3. GUARDAR DATOS EXTRA EN LA BASE DE DATOS (Firestore)
+      // Guardamos el rol (profesor/estudiante) asociado al ID del usuario
+      await setDoc(doc(db, "users", user.uid), {
+        uid: user.uid,
+        name: formData.name,
+        email: formData.email,
+        role: formData.role,
+        createdAt: new Date().toISOString()
       });
-      return;
-    }
 
-    if (formData.password.length < 6) {
       toast({
-        title: "Error",
-        description: "Password must be at least 6 characters long.",
-        variant: "destructive",
+        title: "¡Cuenta creada!",
+        description: `Bienvenido a la clase, ${formData.name}.`,
       });
-      return;
-    }
 
-    const users = JSON.parse(localStorage.getItem('users') || '[]');
-    
-    if (users.find(u => u.email === formData.email)) {
+      // Notificar a la App principal que ya entramos
+      if (onRegister) {
+        onRegister({ ...formData, uid: user.uid });
+      }
+
+    } catch (error) {
+      console.error(error);
+      let mensaje = "Ocurrió un error al registrarse.";
+      
+      // Traducir errores comunes de Firebase al español
+      if (error.code === 'auth/email-already-in-use') mensaje = "Este correo ya está registrado.";
+      if (error.code === 'auth/weak-password') mensaje = "La contraseña debe tener al menos 6 caracteres.";
+      if (error.code === 'auth/invalid-email') mensaje = "El correo no es válido.";
+
       toast({
-        title: "Error",
-        description: "Email already registered.",
-        variant: "destructive",
+        title: "Error de Registro",
+        description: mensaje,
+        variant: "destructive"
       });
-      return;
+    } finally {
+      setIsLoading(false);
     }
-
-    const newUser = {
-      id: Date.now().toString(),
-      name: formData.name,
-      email: formData.email,
-      password: formData.password,
-      role: formData.role,
-      enrolledCourses: [],
-      createdAt: new Date().toISOString()
-    };
-
-    users.push(newUser);
-    localStorage.setItem('users', JSON.stringify(users));
-    onRegister(newUser);
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <motion.div
+    <div className="flex items-center justify-center min-h-screen p-4">
+      <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-md"
+        className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden"
       >
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
-          <div className="flex justify-center mb-6">
-            <div className="bg-gradient-to-br from-blue-500 to-purple-600 p-4 rounded-full">
-              <GraduationCap className="w-12 h-12 text-white" />
+        <div className="p-8">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-100 mb-4">
+              <GraduationCap className="w-8 h-8 text-indigo-600" />
             </div>
+            <h2 className="text-3xl font-bold text-gray-900">Crear Cuenta</h2>
+            <p className="text-gray-500 mt-2">Únete al aula virtual</p>
           </div>
-          
-          <h1 className="text-3xl font-bold text-center text-gray-800 mb-2">
-            Join Virtual Classroom
-          </h1>
-          <p className="text-center text-gray-600 mb-8">
-            Create your account to get started
-          </p>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Full Name
-              </label>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Nombre */}
+            <div className="space-y-2">
               <div className="relative">
-                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <User className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
                 <input
+                  name="name"
                   type="text"
+                  placeholder="Nombre completo"
+                  required
+                  className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
                   value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-800"
-                  placeholder="John Doe"
+                  onChange={handleChange}
                 />
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Email Address
-              </label>
+            {/* Email */}
+            <div className="space-y-2">
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Mail className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
                 <input
+                  name="email"
                   type="email"
+                  placeholder="Correo electrónico"
+                  required
+                  className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
                   value={formData.email}
-                  onChange={(e) => setFormData({...formData, email: e.target.value})}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-800"
-                  placeholder="student@example.com"
+                  onChange={handleChange}
                 />
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Password
-              </label>
+            {/* Contraseña */}
+            <div className="space-y-2">
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Lock className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
                 <input
+                  name="password"
                   type="password"
+                  placeholder="Contraseña (mín. 6 caracteres)"
+                  required
+                  minLength={6}
+                  className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
                   value={formData.password}
-                  onChange={(e) => setFormData({...formData, password: e.target.value})}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-800"
-                  placeholder="••••••••"
+                  onChange={handleChange}
                 />
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Confirm Password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type="password"
-                  value={formData.confirmPassword}
-                  onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-800"
-                  placeholder="••••••••"
-                />
-              </div>
+            {/* Selector de Rol */}
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, role: 'student' })}
+                className={`p-3 rounded-lg border flex items-center justify-center gap-2 transition-all ${
+                  formData.role === 'student' 
+                    ? 'bg-indigo-50 border-indigo-500 text-indigo-700 ring-2 ring-indigo-200' 
+                    : 'border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                <UserCircle className="w-5 h-5" />
+                <span>Estudiante</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, role: 'teacher' })}
+                className={`p-3 rounded-lg border flex items-center justify-center gap-2 transition-all ${
+                  formData.role === 'teacher' 
+                    ? 'bg-purple-50 border-purple-500 text-purple-700 ring-2 ring-purple-200' 
+                    : 'border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                <GraduationCap className="w-5 h-5" />
+                <span>Profesor</span>
+              </button>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                I am a...
-              </label>
-              <div className="relative">
-                <UserCircle className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <select
-                  value={formData.role}
-                  onChange={(e) => setFormData({...formData, role: e.target.value})}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-800 appearance-none bg-white"
-                >
-                  <option value="student">Student</option>
-                  <option value="teacher">Teacher</option>
-                </select>
-              </div>
-            </div>
-
-            <Button
-              type="submit"
-              className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white py-6 rounded-lg font-semibold transition-all transform hover:scale-105"
+            <Button 
+              type="submit" 
+              className="w-full bg-indigo-600 hover:bg-indigo-700 h-11 text-lg"
+              disabled={isLoading}
             >
-              Create Account
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creando cuenta...
+                </>
+              ) : (
+                "Registrarse"
+              )}
             </Button>
           </form>
 
           <div className="mt-6 text-center">
             <p className="text-gray-600">
-              Already have an account?{' '}
-              <button
-                onClick={onSwitchToLogin}
-                className="text-blue-600 font-semibold hover:text-blue-700 transition-colors"
-              >
-                Sign in here
+              ¿Ya tienes cuenta?{' '}
+              <button onClick={onSwitchToLogin} className="text-indigo-600 font-medium hover:underline">
+                Inicia sesión aquí
               </button>
             </p>
           </div>

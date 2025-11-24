@@ -8,7 +8,7 @@ import TeacherDashboard from './components/TeacherDashboard';
 import StudentDashboard from './components/StudentDashboard';
 import { Toaster } from './components/ui/toaster';
 import { useToast } from './components/ui/use-toast';
-
+import LanguageToggle from './components/LanguageToggle';
 function App() {
   const [currentView, setCurrentView] = useState('login');
   const [currentUser, setCurrentUser] = useState(null);
@@ -59,7 +59,6 @@ function App() {
         <title>Virtual Classroom</title>
       </Helmet> 
       */}
-      
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
         {currentView === 'login' && (
           <Login 
@@ -89,10 +88,13 @@ function App() {
           />
         )}
         
+        
         <Toaster />
       </div>
     </>
   );
 }
+
+
 
 export default App;

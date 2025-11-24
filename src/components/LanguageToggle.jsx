@@ -18,7 +18,7 @@ const LanguageToggle = () => {
     >
       <Globe className="w-4 h-4 text-blue-600" />
       <span className="text-sm font-medium text-gray-700">
-        {t('change_lang')}
+        {t('Idioma')}
       </span>
     </button>
   );

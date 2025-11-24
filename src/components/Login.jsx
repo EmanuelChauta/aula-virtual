@@ -1,54 +1,95 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { GraduationCap, Mail, Lock, LogIn } from 'lucide-react';
+import { LogIn, Mail, Lock, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import logo from '../assets/logo.jpg'; 
 import { useTranslation } from 'react-i18next';
 import LanguageToggle from './LanguageToggle';
 
+// 1. IMPORTACIONES OBLIGATORIAS DE FIREBASE
+import { auth, db } from '../firebase';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+
 function Login({ onLogin, onSwitchToRegister }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false); // Estado para el spinner
   const { toast } = useToast();
   const { t } = useTranslation();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
+    // Validación básica
     if (!email || !password) {
       toast({
         title: "Error",
-        description: t('fill_all_fields') || "Please fill in all fields.",
+        description: t('fill_all_fields') || "Completa todos los campos",
         variant: "destructive",
       });
       return;
     }
 
-    const users = JSON.parse(localStorage.getItem('users') || '[]');
-    const user = users.find(u => u.email === email && u.password === password);
+    setIsLoading(true); // Activamos carga
 
-    if (user) {
-      onLogin(user);
-    } else {
+    try {
+      // 2. AQUÍ ESTÁ EL CAMBIO: Preguntamos a Firebase, NO a localStorage
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // 3. Buscamos los datos extra (rol, nombre) en la base de datos
+      const docRef = doc(db, "users", user.uid);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        const userData = docSnap.data();
+        
+        toast({
+          title: "¡Bienvenido!",
+          description: `Hola de nuevo, ${userData.name}`,
+        });
+        
+        // Entramos al sistema
+        onLogin(userData);
+      } else {
+        // Si el usuario existe en Auth pero no en la base de datos (raro, pero posible)
+        toast({
+          title: "Error",
+          description: "No se encontraron los datos del perfil.",
+          variant: "destructive",
+        });
+      }
+
+    } catch (error) {
+      console.error("Error de login:", error);
+      let mensaje = "Correo o contraseña incorrectos.";
+      
+      // Mensajes de error específicos de Firebase
+      if (error.code === 'auth/invalid-credential') mensaje = "Credenciales inválidas.";
+      if (error.code === 'auth/user-not-found') mensaje = "Usuario no encontrado.";
+      if (error.code === 'auth/wrong-password') mensaje = "Contraseña incorrecta.";
+      if (error.code === 'auth/too-many-requests') mensaje = "Muchos intentos fallidos. Espera un poco.";
+
       toast({
-        title: "Login Failed",
-        description: "Invalid email or password.",
+        title: "Error de Acceso",
+        description: mensaje,
         variant: "destructive",
       });
+    } finally {
+      setIsLoading(false); // Desactivamos carga
     }
   };
 
   return (
-    // CAMBIO 1: Usamos 'flex-col' para crear una columna vertical
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
         
-        {/* CAMBIO 2: Barra superior para el botón (No tapa nada en móvil) */}
+        {/* Barra superior para el botón */}
         <div className="w-full p-4 flex justify-end z-10">
            <LanguageToggle />
         </div>
       
-        {/* CAMBIO 3: Contenedor flexible que centra la tarjeta en el espacio restante */}
         <div className="flex-1 flex items-center justify-center p-4">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -103,9 +144,10 @@ function Login({ onLogin, onSwitchToRegister }) {
 
                 <Button
                   type="submit"
+                  disabled={isLoading}
                   className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white py-6 rounded-lg font-semibold transition-all transform hover:scale-105"
                 >
-                  <LogIn className="w-5 h-5 mr-2" />
+                  {isLoading ? <Loader2 className="animate-spin mr-2" /> : <LogIn className="w-5 h-5 mr-2" />}
                   {t('btn_login') || "Sign In"}
                 </Button>
               </form>
